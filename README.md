@@ -9,7 +9,7 @@ The application includes:
 - IP filtering for localhost only
 - CORS restriction for the local development origin
 - Rate limiting with a limit of 10 requests per minute
-- Bearer Token protection for the API route
+- JWT token issuance from username/password and JWT protection for the API route
 - Basic Auth and login session protection for the dashboard route
 
 ## Setup
@@ -39,7 +39,8 @@ Example values used for testing:
 
 | Variable | Value |
 |---|---|
-| `BEARER_TOKEN` | `oil-price-secret-token-2026` |
+| `JWT_SECRET` | `replace_with_a_long_random_secret` |
+| `JWT_EXPIRATION` | `1h` |
 | `BASIC_AUTH_USER` | `superadmin` |
 | `BASIC_AUTH_PASS` | `bunsong@123` |
 | `ALLOWED_ORIGIN` | `http://localhost:3000` |
@@ -57,7 +58,8 @@ The middleware is applied in this order:
 
 | Method | Route | Protection | Purpose |
 |---|---|---|---|
-| `GET` | `/api/oil-prices` | Bearer Token | Returns the oil price JSON data |
+| `POST` | `/api/login` | None | Validates username/password and returns JWT token |
+| `GET` | `/api/oil-prices` | JWT Bearer Token | Returns the oil price JSON data |
 | `GET` | `/login` | None | Displays the dashboard login form |
 | `POST` | `/login` | None | Validates login form and starts dashboard session |
 | `GET` | `/dashboard` | Basic Auth or login form session | Displays the dashboard page |
@@ -70,10 +72,19 @@ The dashboard and logout pages use a simple layout with basic cards, buttons, an
 
 ## How to Test
 
-API request with a valid Bearer Token:
+Get a JWT token:
 
 ```bash
-curl -H "Authorization: Bearer oil-price-secret-token-2026" \
+curl -X POST http://localhost:3000/api/login \
+     -H "Content-Type: application/json" \
+     -d '{"username":"superadmin","password":"bunsong@123"}'
+```
+
+API request with a valid JWT Bearer token:
+
+```bash
+TOKEN="<paste_token_here>"
+curl -H "Authorization: Bearer $TOKEN" \
      http://localhost:3000/api/oil-prices
 ```
 
@@ -100,7 +111,7 @@ Rate limit test:
 ```bash
 for i in $(seq 1 11); do
      curl -s -o /dev/null -w "%{http_code}\n" \
-          -H "Authorization: Bearer oil-price-secret-token-2026" \
+          -H "Authorization: Bearer $TOKEN" \
           http://localhost:3000/api/oil-prices
 done
 ```

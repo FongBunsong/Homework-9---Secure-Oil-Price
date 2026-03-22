@@ -16,6 +16,7 @@ const express = require('express');
 const cors    = require('cors');
 const rateLimit = require('express-rate-limit');
 const basicAuth = require('basic-auth');
+const jwt = require('jsonwebtoken');
 const renderDashboardPage = require('./views/renderDashboardPage');
 const renderLoginPage = require('./views/renderLoginPage');
 const renderLogoutPage = require('./views/renderLogoutPage');
@@ -27,11 +28,13 @@ const DASHBOARD_SESSION_COOKIE = 'dashboard_auth';
 // =============================================================
 // Configuration — credentials & settings
 // =============================================================
-const BEARER_TOKEN = process.env.BEARER_TOKEN || 'oil-price-secret-token-2026';
 const BASIC_AUTH_USER = process.env.BASIC_AUTH_USER || 'superadmin';
 const BASIC_AUTH_PASS = process.env.BASIC_AUTH_PASS || 'bunsong@123';
 const ALLOWED_ORIGIN = process.env.ALLOWED_ORIGIN || `http://localhost:${PORT}`;
+const JWT_SECRET = process.env.JWT_SECRET || 'replace-with-a-long-random-secret';
+const JWT_EXPIRATION = process.env.JWT_EXPIRATION || '1h';
 
+app.use(express.json());
 app.use(express.urlencoded({ extended: false }));
 
 // =============================================================
@@ -94,10 +97,10 @@ const limiter = rateLimit({
 app.use(limiter);
 
 // =============================================================
-// Route-level Middleware: Bearer Token Authentication
+// Route-level Middleware: JWT Authentication
 // Validates "Authorization: Bearer <token>" for /api/oil-prices.
-// Returns 401 when no/malformed token is supplied, 403 for
-// a token that is present but incorrect.
+// Returns 401 when no/malformed token is supplied and 403 when
+// token verification fails (expired/invalid signature).
 // =============================================================
 function requireBearerToken(req, res, next) {
   const authHeader = req.headers['authorization'] || '';
@@ -110,13 +113,15 @@ function requireBearerToken(req, res, next) {
 
   const token = authHeader.slice(7); // strip "Bearer " prefix
 
-  if (token !== BEARER_TOKEN) {
+  try {
+    const decoded = jwt.verify(token, JWT_SECRET);
+    req.user = decoded;
+    return next();
+  } catch (err) {
     return res.status(403).json({
-      error: 'Forbidden: Invalid Bearer token.'
+      error: 'Forbidden: Invalid or expired token.'
     });
   }
-
-  return next();
 }
 
 // =============================================================
@@ -211,12 +216,43 @@ function requireDashboardAuth(req, res, next) {
 // =============================================================
 
 /**
+ * POST /api/login
+ * Accepts username/password and returns a signed JWT.
+ */
+app.post('/api/login', (req, res) => {
+  const { username, password } = req.body || {};
+
+  if (!username || !password) {
+    return res.status(400).json({
+      error: 'Bad request: username and password are required.'
+    });
+  }
+
+  if (username !== BASIC_AUTH_USER || password !== BASIC_AUTH_PASS) {
+    return res.status(401).json({
+      error: 'Invalid credentials.'
+    });
+  }
+
+  const token = jwt.sign(
+    { username },
+    JWT_SECRET,
+    { expiresIn: JWT_EXPIRATION }
+  );
+
+  return res.json({ token });
+});
+
+/**
  * GET /api/oil-prices
  * Protected by Bearer Token.
  * Returns the static oil price JSON object.
  */
 app.get('/api/oil-prices', requireBearerToken, (req, res) => {
-  res.json(OIL_PRICE_DATA);
+  res.json({
+    ...OIL_PRICE_DATA,
+    requested_by: req.user.username
+  });
 });
 
 app.get('/login', (req, res) => {
@@ -273,6 +309,7 @@ app.get('/logged-out', (req, res) => {
 app.listen(PORT, () => {
   console.log(`\nServer running at http://localhost:${PORT}`);
   console.log(`Open http://localhost:${PORT}/login`);
-  console.log(`\nBearer Token : ${BEARER_TOKEN}`);
+  console.log(`\nJWT Login    : POST /api/login`);
+  console.log(`Token Expires: ${JWT_EXPIRATION}`);
   console.log(`Dashboard    : username="${BASIC_AUTH_USER}"  password="${BASIC_AUTH_PASS}"\n`);
 });
