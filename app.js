@@ -244,6 +244,14 @@ app.post('/api/login', (req, res) => {
 });
 
 /**
+ * GET /
+ * Landing page — confirms the server is running.
+ */
+app.get('/', (req, res) => {
+  res.send('Secure Oil Price API is running successfully.');
+});
+
+/**
  * GET /api/oil-prices
  * Protected by Bearer Token.
  * Returns the static oil price JSON object.
